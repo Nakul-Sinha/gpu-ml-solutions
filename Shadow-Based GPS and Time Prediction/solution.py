@@ -1,24 +1,3 @@
-"""
-Shadow-Based GPS + Time Prediction.
-
-Predict latitude, longitude and UTC hour from a single outdoor image with visible shadows,
-given the day-of-year. The model learns solar geometry IMPLICITLY from pixels -- there is NO
-analytical sun-position equation, NO shadow-angle measurement, NO ephemeris, NO hard-coded
-astronomy anywhere in this pipeline. It is a pure image-conditioned regressor.
-
-Design:
-  * Backbone: ImageNet-pretrained ResNet50 (allowed; not geolocation-pretrained). doy is fed as
-    a sin/cos conditioning vector to the regression head (the date is known in any real scenario).
-  * Targets: latitude regressed directly; longitude and hour as circular sin/cos pairs decoded
-    with atan2 (both wrap around). Loss is a stable sin/cos + latitude MSE (no arcsin/haversine
-    terms, which produce NaN gradients under mixed precision).
-  * Calibration: because the injected rendering noise makes fine geometry only weakly recoverable,
-    each target's prediction is blended with the training prior at a weight chosen on a held-out
-    split to maximise the exact competition score. Circular targets are blended as unit vectors.
-    This also controls the >10,000 km anti-cheat penalty on longitude.
-
-Reads ./dataset[/public]/... ; writes ./working/submission.csv. torch/torchvision/numpy/pandas only.
-"""
 import os, math, numpy as np, pandas as pd, torch, torch.nn as nn, torch.nn.functional as F
 import torchvision
 from torch.utils.data import Dataset, DataLoader
@@ -141,7 +120,6 @@ def circ_mean(deg, period):
     return (math.atan2(np.sin(a).mean(), np.cos(a).mean()) * period / (2 * math.pi))
 
 def blend_circular(pred_deg, prior_deg, alpha, period):
-    # blend two angles as unit vectors (alpha=1 -> prediction, alpha=0 -> prior), decode back to [-p/2..]
     ap = 2 * math.pi * pred_deg / period; a0 = 2 * math.pi * prior_deg / period
     vx = alpha * np.cos(ap) + (1 - alpha) * math.cos(a0)
     vy = alpha * np.sin(ap) + (1 - alpha) * math.sin(a0)
@@ -155,12 +133,11 @@ def main():
     model = train(ti, EPOCHS)
     ov = predict(model, XTR[vi], CTR[vi]); la_v, lo_v, hr_v = decode(ov)
 
-    # per-target blend search on validation (exact competition score)
     best = (-1, (0, 0, 0))
     grid = np.linspace(0, 1, 21)
     for al in grid:
         latb = al * la_v + (1 - al) * prior_lat
-        # precompute geo score contribution needs lon too; search jointly but cheaply
+
         for alo in [0, 0.1, 0.2, 0.35, 0.5, 0.75, 1.0]:
             lonb = blend_circular(lo_v, prior_lon, alo, 360)
             for ah in [0, 0.1, 0.2, 0.35, 0.5, 0.75, 1.0]:
@@ -171,7 +148,6 @@ def main():
     prior_s = score(np.full(nval, prior_lat), np.full(nval, prior_lon), np.full(nval, prior_hr % 24), LAT[vi], LON[vi], HR[vi])
     print(f'val prior score={prior_s:.4f} | blended score={s:.4f} | alpha lat={al:.2f} lon={alo:.2f} hr={ah:.2f}', flush=True)
 
-    # test prediction with the same model + chosen blend
     ot = predict(model, XTE, CTE); la_t, lo_t, hr_t = decode(ot)
     lat_f = np.clip(al * la_t + (1 - al) * prior_lat, -90, 90)
     lon_f = ((blend_circular(lo_t, prior_lon, alo, 360) + 180) % 360) - 180
