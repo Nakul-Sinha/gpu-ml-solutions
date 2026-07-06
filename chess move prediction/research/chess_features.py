@@ -83,7 +83,7 @@ def find_source(board, color, piece, tr, tf, dis_file, dis_rank):
 
 SAN_RE = re.compile(r'^([KQRBN])?([a-h])?([1-8])?(x)?([a-h][1-8])(=[QRBN])?([+#])?$')
 
-def apply_moves(move_prefix):
+def apply_moves(move_prefix, return_board=False):
     """Replay SAN tokens, return dict of features. Robust to rare parse ambiguity."""
     board = initial_board()
     tokens = move_prefix.split()
@@ -217,6 +217,17 @@ def apply_moves(move_prefix):
     feat['b_bishops'] = counts[('b', 'B')]
     feat['bishop_pair_w'] = 1 if counts[('w', 'B')] >= 2 else 0
     feat['bishop_pair_b'] = 1 if counts[('b', 'B')] >= 2 else 0
+    if return_board:
+        planes = np.zeros((12, 8, 8), np.float32)
+        pidx = {'P': 0, 'N': 1, 'B': 2, 'R': 3, 'Q': 4, 'K': 5}
+        for r in range(8):
+            for f in range(8):
+                cell = board[r][f]
+                if cell is None:
+                    continue
+                col, pc = cell
+                planes[pidx[pc] + (0 if col == 'w' else 6), r, f] = 1.0
+        return feat, planes
     return feat
 
 
