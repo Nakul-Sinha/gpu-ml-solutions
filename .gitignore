@@ -1,0 +1,5 @@
+# Dataset files (kept locally, not pushed to GitHub)
+**/dataset/
+
+# Incomplete browser downloads
+*.crdownload
