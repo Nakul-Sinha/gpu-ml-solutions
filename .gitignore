@@ -4,3 +4,5 @@
 
 # Incomplete browser downloads
 *.crdownload
+__pycache__/
+*.pyc
