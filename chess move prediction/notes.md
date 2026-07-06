@@ -20,8 +20,21 @@
 5. Confidence fitted from the strongest calibrated class against the observed leader rate.
 
 ## Result (honest 5-fold OOF composite)
-- blend pos 0.35 / gru 0.35 / feat 0.30 + adaptive shrink: composite=0.166, **Final ~0.266**
-- S_brier=0.202, S_log=0.135, S_conf=0.338, S_worst=-0.039.
+- blend pos 0.4 / gru 0.35 / feat 0.25 + robust shrinkage: **Final ~0.265 (harsh proxy) to 0.271 (lenient)**.
+- S_brier=0.208, S_log=0.140, S_conf=0.337.
+
+## Robustness fix (live feedback: first version scored 0.245 vs 0.266 OOF)
+- The gap was worst-group OVERFITTING: the OOF adaptive shrinkage measured worst -0.04 but the hidden
+  grouping is harsher (~-0.18). Fixes applied:
+  1. **Enriched position planes**: added 3 attack/control planes (white-attacks, black-attacks, their
+     difference) -> king-safety/activity signal. Position CNN S_brier 0.13 -> 0.145 AND positive worst-group.
+  2. **Bidirectional GRU** with mean/max pooling: S_brier 0.15 -> 0.16.
+  3. **Disagreement-based shrinkage**: shrink rows where the 3 models disagree (grouping-independent
+     uncertainty), and shrink toward the reliable opening-rate (not just the global prior) for
+     well-supported openings -- fixes openings where the nets confidently agree but are wrong.
+  4. **Harsh worst-group proxy** (finer opening groups + cohort-size buckets) for selecting shrinkage,
+     so it stops overfitting the lenient proxy. Worst first-3 group (e.g. 'e4 e5 Bc4', 30 cohorts) is
+     the binding constraint at ~-0.08.
 
 ## Compliance
 - Only parses the visible SAN prefix (board reconstruction). No engine eval, external PGN lookup,

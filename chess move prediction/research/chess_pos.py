@@ -12,7 +12,11 @@ HERE=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 tr=pd.read_csv(os.path.join(HERE,'dataset','train.csv'))
 RATE=['white_win_rate','draw_rate','black_win_rate']; N=len(tr); cnt=tr['cohort_game_count'].values.astype(np.float32); Y=tr[RATE].values.astype(np.float32)
 prior=np.average(Y,0,weights=cnt)
-PL=np.stack([apply_moves(s,return_board=True)[1] for s in tr['move_prefix']])  # (N,12,8,8)
+_R=[apply_moves(s,return_board=True) for s in tr['move_prefix']]
+PL=np.stack([r[1] for r in _R])  # (N,15,8,8)
+BKP=['mat_diff','cap_diff','n_captures','n_checks','castle_diff','queens_on','queen_diff','pawn_diff','minor_diff','rook_diff','center_diff','dev_diff','mat_total']
+BSC=np.array([[r[0][k] for k in BKP] for r in _R],np.float32)
+BSC=(BSC-BSC.mean(0))/(BSC.std(0)+1e-6)
 first1=tr['move_prefix'].apply(lambda s:s.split()[0]).values
 plyf=tr['prefix_ply_count'].values.astype(np.float32)
 BRIER_REF=np.mean(np.sum((prior[None]-Y)**2,1))
@@ -28,13 +32,13 @@ def worst(p):
 class Net(nn.Module):
     def __init__(s):
         super().__init__()
-        s.c=nn.Sequential(nn.Conv2d(12,48,3,padding=1),nn.ReLU(),nn.BatchNorm2d(48),
-                          nn.Conv2d(48,48,3,padding=1),nn.ReLU(),nn.BatchNorm2d(48),nn.AdaptiveAvgPool2d(1))
-        s.f=nn.Sequential(nn.Flatten(),nn.Dropout(0.5),nn.Linear(48+1,32),nn.ReLU(),nn.Dropout(0.4),nn.Linear(32,3))
-    def forward(s,x,ply): return s.f(torch.cat([s.c(x).flatten(1),ply],1))
+        s.c=nn.Sequential(nn.Conv2d(15,64,3,padding=1),nn.ReLU(),nn.BatchNorm2d(64),
+                          nn.Conv2d(64,64,3,padding=1),nn.ReLU(),nn.BatchNorm2d(64),nn.AdaptiveAvgPool2d(1))
+        s.f=nn.Sequential(nn.Flatten(),nn.Dropout(0.55),nn.Linear(64+13,48),nn.ReLU(),nn.Dropout(0.45),nn.Linear(48,3))
+    def forward(s,x,bsc): return s.f(torch.cat([s.c(x).flatten(1),bsc],1))
 def train(tri,vai,epochs=60):
-    Xt=torch.tensor(PL[tri]).to(DEV); yt=torch.tensor(Y[tri]).to(DEV); wt=torch.tensor(np.sqrt(cnt[tri])).to(DEV); pt=torch.tensor(((plyf[tri]-11)/3)[:,None]).to(DEV)
-    Xv=torch.tensor(PL[vai]).to(DEV); pv=torch.tensor(((plyf[vai]-11)/3)[:,None]).to(DEV)
+    Xt=torch.tensor(PL[tri]).to(DEV); yt=torch.tensor(Y[tri]).to(DEV); wt=torch.tensor(np.sqrt(cnt[tri])).to(DEV); pt=torch.tensor(BSC[tri]).to(DEV)
+    Xv=torch.tensor(PL[vai]).to(DEV); pv=torch.tensor(BSC[vai]).to(DEV)
     m=Net().to(DEV); opt=torch.optim.AdamW(m.parameters(),lr=2e-3,weight_decay=3e-3); sch=torch.optim.lr_scheduler.CosineAnnealingLR(opt,epochs)
     for ep in range(epochs):
         m.train(); perm=torch.randperm(len(tri))

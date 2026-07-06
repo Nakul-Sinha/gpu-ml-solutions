@@ -22,11 +22,13 @@ BRIER_REF=np.mean(np.sum((prior[None]-Y)**2,1))
 def sbrier(p): return 1-np.mean(np.sum((p-Y)**2,1))/BRIER_REF
 class GRU(nn.Module):
     def __init__(s):
-        super().__init__(); s.emb=nn.Embedding(V,28,padding_idx=0); s.drop=nn.Dropout(0.4)
-        s.gru=nn.GRU(28,40,batch_first=True); s.fc=nn.Sequential(nn.Dropout(0.4),nn.Linear(40,3))
+        super().__init__(); s.emb=nn.Embedding(V,32,padding_idx=0); s.drop=nn.Dropout(0.4)
+        s.gru=nn.GRU(32,48,batch_first=True,bidirectional=True); s.fc=nn.Sequential(nn.Dropout(0.45),nn.Linear(288,48),nn.ReLU(),nn.Dropout(0.4),nn.Linear(48,3))
     def forward(s,x,l):
-        e=s.drop(s.emb(x)); o,h=s.gru(e); return s.fc(h[-1])
-def train_pred(tri, Xp, seeds=3, epochs=45):
+        e=s.drop(s.emb(x)); o,h=s.gru(e)
+        hcat=torch.cat([h[0],h[1]],1); pooled=torch.cat([o.mean(1),o.max(1)[0]],1)
+        return s.fc(torch.cat([hcat,pooled],1))
+def train_pred(tri, Xp, seeds=5, epochs=45):
     Xt=torch.tensor(Xtr[tri]).to(DEV); Lt=torch.tensor(Ltr[tri]).to(DEV); yt=torch.tensor(Y[tri]).to(DEV); wt=torch.tensor(np.sqrt(cnt[tri])).to(DEV)
     Xpp=torch.tensor(Xp).to(DEV); outs=[]
     for sd in range(seeds):
