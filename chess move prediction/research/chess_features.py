@@ -218,8 +218,9 @@ def apply_moves(move_prefix, return_board=False):
     feat['bishop_pair_w'] = 1 if counts[('w', 'B')] >= 2 else 0
     feat['bishop_pair_b'] = 1 if counts[('b', 'B')] >= 2 else 0
     if return_board:
-        planes = np.zeros((12, 8, 8), np.float32)
+        planes = np.zeros((15, 8, 8), np.float32)
         pidx = {'P': 0, 'N': 1, 'B': 2, 'R': 3, 'Q': 4, 'K': 5}
+        wa = np.zeros((8, 8), np.float32); ba = np.zeros((8, 8), np.float32)
         for r in range(8):
             for f in range(8):
                 cell = board[r][f]
@@ -227,6 +228,25 @@ def apply_moves(move_prefix, return_board=False):
                     continue
                 col, pc = cell
                 planes[pidx[pc] + (0 if col == 'w' else 6), r, f] = 1.0
+                att = wa if col == 'w' else ba
+                if pc == 'P':
+                    d = 1 if col == 'w' else -1
+                    for df in (-1, 1):
+                        nr, nf = r + d, f + df
+                        if 0 <= nr < 8 and 0 <= nf < 8: att[nr, nf] += 1
+                elif pc == 'N':
+                    for nr, nf in knight_moves(r, f): att[nr, nf] += 1
+                elif pc == 'K':
+                    for nr, nf in king_moves(r, f): att[nr, nf] += 1
+                else:
+                    for dr, df in SLIDE_DIRS[pc]:
+                        nr, nf = r + dr, f + df
+                        while 0 <= nr < 8 and 0 <= nf < 8:
+                            att[nr, nf] += 1
+                            if board[nr][nf] is not None: break
+                            nr += dr; nf += df
+        planes[12] = np.clip(wa / 3.0, 0, 2); planes[13] = np.clip(ba / 3.0, 0, 2)
+        planes[14] = np.clip((wa - ba) / 3.0, -2, 2)
         return feat, planes
     return feat
 
