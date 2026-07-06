@@ -1,21 +1,3 @@
-"""
-Multimodal Wildlife Localization — predict a normalized bounding box around the animal in
-paired RGB + thermal aerial crops.
-
-Approach:
-  * Early-fusion 6-channel input: RGB (3) stacked with the paired thermal colormap (3). The
-    animal reads warmer/brighter than grass and soil in thermal, giving a strong localization
-    cue that RGB alone lacks; the network learns to fuse both.
-  * Backbone: ImageNet-pretrained ResNet34 with conv1 inflated to 6 input channels (pretrained
-    RGB filters copied; thermal filters initialized from them). Small MLP head -> 4 box coords.
-  * Loss aligned to the metric: 0.7 * GIoU loss + 0.3 * L1 on box corners.
-  * Aerial top-down augmentation that preserves box semantics: horizontal/vertical flips and
-    90-degree rotations (with matching box transforms) + mild color jitter.
-  * 5-fold ensemble; each fold predicts the test set with flip/rotate test-time augmentation,
-    averaged. Deterministic seeds.
-
-Reads ./dataset[/public]/... ; writes ./working/submission.csv. Standard libs only.
-"""
 import os, numpy as np, pandas as pd, torch, torch.nn as nn, torch.nn.functional as F
 import torchvision
 from torch.utils.data import Dataset, DataLoader
@@ -161,7 +143,7 @@ def main():
         print(f'fold{fi} val_metric={m:.3f}', flush=True)
     print(f'CV metric = {np.mean(cv):.3f} +- {np.std(cv):.3f} (lower better)', flush=True)
     pred = np.mean(test_preds, 0)
-    # enforce validity: finite, in [0,1], x_min<x_max, y_min<y_max
+
     pred = np.clip(pred, 0, 1)
     for j in range(len(pred)):
         if pred[j, 2] - pred[j, 0] < 1e-3: pred[j, 0], pred[j, 2] = max(0, pred[j, 0] - 5e-3), min(1, pred[j, 2] + 5e-3)

@@ -1,26 +1,3 @@
-"""
-Chess cohort outcome-distribution prediction.
-
-Task: map a SAN move-prefix (an aggregate cohort of early/mid-game positions) to a
-calibrated 3-class outcome distribution (white win / draw / black win) plus a confidence.
-
-Approach (learned from public/train.csv only; visible prefix fields only):
-  * Reconstruct the board by replaying the SAN prefix -> generalizable board features
-    (material balance, captures, castling, checks, development). Pure parsing of the
-    visible input: NO engine evaluation, NO external lookup, NO best-move solving.
-  * Out-of-fold target-encoding of opening families (first-k moves) -> smoothed historical
-    white/draw/black rates for that opening (generalizes; exact prefixes never recur in test).
-  * Coarse opening / early-move one-hots.
-  * Model: blend of a count-weighted multinomial Logistic Regression and HistGradient-
-    Boosting classifiers (each cohort expanded into 3 class observations weighted by
-    rate*cohort_game_count, so reliable large cohorts dominate).
-  * Calibration: temperature + shrinkage toward the global prior, selected by repeated CV
-    to maximize the Brier skill. Confidence = fitted linear map of max-probability onto the
-    empirical max-class rate.
-
-Reads ./dataset[/public]/{train,test}.csv ; writes ./working/submission.csv
-Deterministic. Uses only numpy / pandas / scikit-learn (no network, no pip install).
-"""
 import os, re, numpy as np, pandas as pd
 from collections import defaultdict
 from sklearn.linear_model import LogisticRegression
@@ -32,11 +9,6 @@ from sklearn.model_selection import RepeatedKFold
 SEED = 42
 np.random.seed(SEED)
 
-# ----------------------------------------------------------------------------------
-# Self-contained SAN parser: replay the move prefix to reconstruct the final position.
-# Only the visible SAN tokens are used. Material/positional features are robust to rare
-# source-square ambiguity (captures are resolved from the destination square occupancy).
-# ----------------------------------------------------------------------------------
 PIECE_VALUE = {'P': 1, 'N': 3, 'B': 3, 'R': 5, 'Q': 9, 'K': 0}
 FILES = 'abcdefgh'
 SAN_RE = re.compile(r'^([KQRBN])?([a-h])?([1-8])?(x)?([a-h][1-8])(=[QRBN])?([+#])?$')
@@ -161,7 +133,6 @@ def board_features(move_prefix):
         'dev_diff':dev['w']-dev['b'],'dev_total':dev['w']+dev['b'],'mat_total':mat['w']+mat['b'],
         'n_promo':n_promo,'bishop_pair_w':int(cnt[('w','B')]>=2),'bishop_pair_b':int(cnt[('b','B')]>=2)}
 
-# ----------------------------------------------------------------------------------
 def find_dataset():
     here = os.path.dirname(os.path.abspath(__file__))
     for c in [os.path.join(here,'dataset','public'), os.path.join(here,'dataset'),
@@ -233,7 +204,6 @@ def main():
         q=np.exp(np.log(np.clip(p,1e-9,1))/T); q/=q.sum(1,keepdims=True)
         q=(1-lam)*q+lam*prior[None]; return q/q.sum(1,keepdims=True)
 
-    # Repeated CV -> OOF for both models
     print('running repeated CV for calibration...', flush=True)
     rkf=RepeatedKFold(n_splits=5,n_repeats=3,random_state=SEED)
     oof_lr=np.zeros((N,3)); oof_g=np.zeros((N,3)); ck=np.zeros(N)
@@ -254,7 +224,6 @@ def main():
     a,b=np.linalg.lstsq(np.vstack([mp,np.ones_like(mp)]).T,my,rcond=None)[0]
     print(f'selected wg={wg:.2f} lam={lam} T={T} | OOF BSS={s:.4f} confMAE={np.mean(np.abs(np.clip(a*mp+b,0,1)-my)):.4f}', flush=True)
 
-    # Refit on all data, predict test
     models=fit(np.arange(N)); Xte=feats_te(np.arange(N)); plr,pg=pred(models,Xte)
     p=calib(wg*pg+(1-wg)*plr,lam,T)
     conf=np.clip(a*p.max(1)+b,0.0,1.0)
