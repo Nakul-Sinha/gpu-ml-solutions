@@ -1,4 +1,4 @@
-# Shadow-Based GPS + Time Prediction — Notes
+# Shadow-Based GPS + Time Prediction: Notes
 
 ## Task
 - Predict latitude, longitude, UTC hour from a single 512x512 shadow image; doy provided.

@@ -1,4 +1,4 @@
-# Multimodal Wildlife Localization — Notes
+# Multimodal Wildlife Localization: Notes
 
 ## Task
 - Predict normalized bbox around single animal (cow/deer/horse) in paired RGB + thermal 300x300 crops.

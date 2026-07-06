@@ -1,7 +1,7 @@
 Overview
-Given a single outdoor photograph containing visible shadows, predict the GPS coordinates (latitude, longitude) and UTC hour the image was captured. The only reliable geolocation cues are shadow geometry — length, direction, sharpness — combined with sky appearance and terrain texture.
+Given a single outdoor photograph containing visible shadows, predict the GPS coordinates (latitude, longitude) and UTC hour the image was captured. The only reliable geolocation cues are shadow geometry, length, direction, sharpness, combined with sky appearance and terrain texture.
 
-This is an inverse sun-position problem: from a 2D projection of 3D shadow-casting geometry, recover where on Earth and when the image was taken. The task requires implicit understanding of solar geometry, atmospheric optics, and terrain cues — all learned from visual features through computer vision.
+This is an inverse sun-position problem: from a 2D projection of 3D shadow-casting geometry, recover where on Earth and when the image was taken. The task requires implicit understanding of solar geometry, atmospheric optics, and terrain cues, all learned from visual features through computer vision.
 
 Evaluation
 Submissions are scored using a composite of Haversine distance for geolocation and circular mean absolute error for time. The composite score ranges from ~0 to 1 (higher is better).
@@ -228,52 +228,52 @@ Anti-cheat: Individual samples with raw geo error exceeding 10,000 km (more than
 Expected baselines:
 
 Random guessing (uniform lat/lon/hour): ~0.18 (mean geo error ~10,000 km, mean time error ~6 h)
-Sample submission (all zeros): ~0.23 (lat=0, lon=0, hour=12.0 — better than random)
+Sample submission (all zeros): ~0.23 (lat=0, lon=0, hour=12.0, better than random)
 Physics-aware model (implicit sun geometry): ~0.70+
 Perfect prediction: 1.0
 Dataset
-The dataset consists of 8,000 fully synthetic outdoor images (5,600 train, 2,400 test) at 512×512 resolution generated through a physically-based Blender rendering pipeline with Nishita atmospheric sky models. Images are procedurally generated — each scene is uniquely rendered with randomized terrain, shadow-casting objects (buildings, trees, rocks), and atmospheric conditions. Sun elevation is constrained to 8–55° to ensure visible shadows across all samples. The only variables preserved across images are the physically accurate sun position and the ground-truth GPS coordinate assigned to that sun position.
+The dataset consists of 8,000 fully synthetic outdoor images (5,600 train, 2,400 test) at 512×512 resolution generated through a physically-based Blender rendering pipeline with Nishita atmospheric sky models. Images are procedurally generated, each scene is uniquely rendered with randomized terrain, shadow-casting objects (buildings, trees, rocks), and atmospheric conditions. Sun elevation is constrained to 8 to 55° to ensure visible shadows across all samples. The only variables preserved across images are the physically accurate sun position and the ground-truth GPS coordinate assigned to that sun position.
 
 Data Generation
-Images are produced by a procedural rendering pipeline. For each scene, a GPS coordinate and UTC hour are sampled, and the corresponding sun position (elevation and azimuth) is computed from first-principles solar geometry using the day of year. The scene is then drawn with the sun placed at the correct angular position and shadows cast in the correct direction. Deliberate noise is injected into sun placement, shadow angle, and atmospheric appearance — this prevents extracting sun position analytically from image pixels and forces models to learn solar geometry implicitly.
+Images are produced by a procedural rendering pipeline. For each scene, a GPS coordinate and UTC hour are sampled, and the corresponding sun position (elevation and azimuth) is computed from first-principles solar geometry using the day of year. The scene is then drawn with the sun placed at the correct angular position and shadows cast in the correct direction. Deliberate noise is injected into sun placement, shadow angle, and atmospheric appearance, this prevents extracting sun position analytically from image pixels and forces models to learn solar geometry implicitly.
 
 Key Design Decisions
 Day of year (doy) is provided in both train.csv and test.csv. Without it, the inverse-sun-position problem is underdetermined. In any real-world scenario, the date a photo was taken is known.
 Scene-level metadata is stripped: internal parameters such as sun elevation, sun azimuth, and scene type are not included in any public file. The model must infer them from the image alone.
-Train and test sets are disjoint — no location or image appears in both splits.
+Train and test sets are disjoint, no location or image appears in both splits.
 Public Files
-**train.csv** — Training labels (5,600 rows)
+**train.csv**: Training labels (5,600 rows)
 
-image_id (str) — Filename without extension, e.g. scene_000001, maps to train/scene_000001.png
-latitude (float) — GPS latitude in decimal degrees, range [-90, 90]
-longitude (float) — GPS longitude in decimal degrees, range [-180, 180]
-hour (float) — UTC hour of capture, range [0, 24)
-doy (int) — Day of year the photo was taken, range [1, 365]
-**test.csv** — Test file list (2,400 rows)
+image_id (str), Filename without extension, e.g. scene_000001, maps to train/scene_000001.png
+latitude (float), GPS latitude in decimal degrees, range [-90, 90]
+longitude (float), GPS longitude in decimal degrees, range [-180, 180]
+hour (float), UTC hour of capture, range [0, 24)
+doy (int), Day of year the photo was taken, range [1, 365]
+**test.csv**: Test file list (2,400 rows)
 
-image_id (str) — Filename without extension, maps to test/{image_id}.png
-doy (int) — Day of year the photo was taken, range [1, 365]
-**sample_submission.csv** — Submission template (2,400 rows)
+image_id (str), Filename without extension, maps to test/{image_id}.png
+doy (int), Day of year the photo was taken, range [1, 365]
+**sample_submission.csv**: Submission template (2,400 rows)
 
-image_id (str) — Filename from test/
-latitude (float) — Placeholder value 0.0, range [-90, 90]
-longitude (float) — Placeholder value 0.0, range [-180, 180]
-hour (float) — Placeholder value 12.0, range [0, 24)
-All placeholder values are neutral — they carry no information about the test set answers.
+image_id (str), Filename from test/
+latitude (float), Placeholder value 0.0, range [-90, 90]
+longitude (float), Placeholder value 0.0, range [-180, 180]
+hour (float), Placeholder value 12.0, range [0, 24)
+All placeholder values are neutral, they carry no information about the test set answers.
 
 Image Properties
 Resolution: 512×512 pixels, RGB
 Format: PNG
 Scene types: urban, rural, desert, forest, coastal (randomly assigned, not correlated with image_id or any public feature)
-Sun elevation range: 8–55° (constrained to ensure visible shadows; sun never directly overhead)
+Sun elevation range: 8 to 55° (constrained to ensure visible shadows; sun never directly overhead)
 Content: outdoor scenes with physically accurate Nishita sky, procedural terrain, 3D objects (buildings, trees, rocks, poles, cacti), and ray-traced cast shadows. Shadow geometry is the primary predictive signal.
 Submission
 Submit a CSV file with the following columns:
 
-image_id (str) — Filename from test/
-latitude (float) — Predicted latitude in [-90, 90]
-longitude (float) — Predicted longitude in [-180, 180]
-hour (float) — Predicted UTC hour in [0, 24)
+image_id (str), Filename from test/
+latitude (float), Predicted latitude in [-90, 90]
+longitude (float), Predicted longitude in [-180, 180]
+hour (float), Predicted UTC hour in [0, 24)
 Example (first 3 rows):
 
 image_id,latitude,longitude,hour  
@@ -308,5 +308,5 @@ No hard-coded astronomical formulas or ephemeris data
 External knowledge bases: No Wikipedia, astronomical tables, sun position calculators, GIS databases, or elevation maps.
 Closed-source / commercial APIs: No GPT-4, Claude, Gemini, or any LLM API (local or cloud).
 Human-written rules: No regex, hard-coded rules, or manual feature engineering for sun/shadow detection.
-Data leak exploitation: Must not exploit any known data generation patterns. If you discover a leak, report it — don't exploit it.
+Data leak exploitation: Must not exploit any known data generation patterns. If you discover a leak, report it, don't exploit it.
  
