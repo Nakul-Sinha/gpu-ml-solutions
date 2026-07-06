@@ -88,7 +88,8 @@ def replay(move_prefix):
             if src is not None: board[src[0]][src[1]]=None
             board[tr][tf]=(color,piece)
         ep=new_ep
-    planes=np.zeros((12,8,8),np.float32); pidx={'P':0,'N':1,'B':2,'R':3,'Q':4,'K':5}
+    planes=np.zeros((15,8,8),np.float32); pidx={'P':0,'N':1,'B':2,'R':3,'Q':4,'K':5}
+    wa=np.zeros((8,8),np.float32); ba=np.zeros((8,8),np.float32)
     mat={'w':0,'b':0}; ct={(c,p):0 for c in 'wb' for p in 'PNBRQK'}; cen={'w':0,'b':0}; dev={'w':0,'b':0}; csq={(3,3),(3,4),(4,3),(4,4)}
     for r in range(8):
         for f in range(8):
@@ -97,6 +98,24 @@ def replay(move_prefix):
             col,pc=cell; planes[pidx[pc]+(0 if col=='w' else 6),r,f]=1.0; ct[(col,pc)]+=1; mat[col]+=PIECE_VALUE[pc]
             if (r,f) in csq: cen[col]+=1
             if pc in ('N','B') and r!=(0 if col=='w' else 7): dev[col]+=1
+            att=wa if col=='w' else ba
+            if pc=='P':
+                d=1 if col=='w' else -1
+                for df in (-1,1):
+                    nr,nf=r+d,f+df
+                    if 0<=nr<8 and 0<=nf<8: att[nr,nf]+=1
+            elif pc=='N':
+                for nr,nf in _knight(r,f): att[nr,nf]+=1
+            elif pc=='K':
+                for nr,nf in _king(r,f): att[nr,nf]+=1
+            else:
+                for dr,df in _SLIDE[pc]:
+                    nr,nf=r+dr,f+df
+                    while 0<=nr<8 and 0<=nf<8:
+                        att[nr,nf]+=1
+                        if board[nr][nf] is not None: break
+                        nr+=dr; nf+=df
+    planes[12]=np.clip(wa/3.0,0,2); planes[13]=np.clip(ba/3.0,0,2); planes[14]=np.clip((wa-ba)/3.0,-2,2)
     feat=[mat['w']-mat['b'],captured['w']-captured['b'],ncap,nchk,(castle['w']>0)-(castle['b']>0),ct[('w','Q')]+ct[('b','Q')],
           ct[('w','Q')]-ct[('b','Q')],ct[('w','P')]-ct[('b','P')],(ct[('w','N')]+ct[('w','B')])-(ct[('b','N')]+ct[('b','B')]),
           ct[('w','R')]-ct[('b','R')],cen['w']-cen['b'],dev['w']-dev['b'],mat['w']+mat['b']]
@@ -167,13 +186,14 @@ def feat_predict_test():
     p=0.5*te_ap+0.35*np.mean([g.predict_proba(Xap) for g in gb],0)+0.15*lr.predict_proba(sc.transform(Xap)); return p/p.sum(1,keepdims=True)
 class PNet(nn.Module):
     def __init__(s):
-        super().__init__(); s.c=nn.Sequential(nn.Conv2d(12,48,3,padding=1),nn.ReLU(),nn.BatchNorm2d(48),nn.Conv2d(48,48,3,padding=1),nn.ReLU(),nn.BatchNorm2d(48),nn.AdaptiveAvgPool2d(1))
-        s.f=nn.Sequential(nn.Flatten(),nn.Dropout(0.5),nn.Linear(49,32),nn.ReLU(),nn.Dropout(0.4),nn.Linear(32,3))
+        super().__init__(); s.c=nn.Sequential(nn.Conv2d(15,64,3,padding=1),nn.ReLU(),nn.BatchNorm2d(64),nn.Conv2d(64,64,3,padding=1),nn.ReLU(),nn.BatchNorm2d(64),nn.AdaptiveAvgPool2d(1))
+        s.f=nn.Sequential(nn.Flatten(),nn.Dropout(0.55),nn.Linear(65,40),nn.ReLU(),nn.Dropout(0.45),nn.Linear(40,3))
     def forward(s,x,p): return s.f(torch.cat([s.c(x).flatten(1),p],1))
 class GNet(nn.Module):
     def __init__(s):
-        super().__init__(); s.emb=nn.Embedding(Vsz,28,padding_idx=0); s.drop=nn.Dropout(0.4); s.gru=nn.GRU(28,40,batch_first=True); s.fc=nn.Sequential(nn.Dropout(0.4),nn.Linear(40,3))
-    def forward(s,x): o,h=s.gru(s.drop(s.emb(x))); return s.fc(h[-1])
+        super().__init__(); s.emb=nn.Embedding(Vsz,32,padding_idx=0); s.drop=nn.Dropout(0.4); s.gru=nn.GRU(32,48,batch_first=True,bidirectional=True); s.fc=nn.Sequential(nn.Dropout(0.45),nn.Linear(288,48),nn.ReLU(),nn.Dropout(0.4),nn.Linear(48,3))
+    def forward(s,x):
+        o,h=s.gru(s.drop(s.emb(x))); return s.fc(torch.cat([h[0],h[1],o.mean(1),o.max(1)[0]],1))
 def train_net(kind,tri,pred_pack,seeds):
     yt=torch.tensor(Y[tri]).to(DEV); wt=torch.tensor(np.sqrt(cnt[tri])).to(DEV); outs=[]
     epochs=60 if kind=='pos' else 45
@@ -201,7 +221,7 @@ def gru_pack(idx): return (torch.tensor(SXtr[idx]).to(DEV),)
 def net_oof(kind):
     oof=np.zeros((N,3)); kf=KFold(5,shuffle=True,random_state=42)
     for tri,vai in kf.split(np.arange(N)):
-        oof[vai]=train_net(kind,tri,pos_pack(vai) if kind=='pos' else gru_pack(vai),3)
+        oof[vai]=train_net(kind,tri,pos_pack(vai) if kind=='pos' else gru_pack(vai),5)
     return oof
 
 def main():
@@ -213,7 +233,7 @@ def main():
     feat_te=feat_predict_test()
     pos_te=train_net('pos',np.arange(N),(torch.tensor(PLte).to(DEV),torch.tensor(((PLYte-11)/3)[:,None]).to(DEV)),5)
     gru_te=train_net('gru',np.arange(N),(torch.tensor(SXte).to(DEV),),5)
-    wp,wg,wf,lo,hi,tau,T=0.35,0.35,0.30,0.03,0.75,60.0,1.0
+    wp,wg,wf,lo,hi,tau,dsc,tau2,T=0.4,0.35,0.25,0.05,0.5,150.0,0.6,250.0,1.0
     def opk(df,k): return df['move_prefix'].apply(lambda s:' '.join(s.split()[:k])).values
     sup4=defaultdict(float); sup2=defaultdict(float)
     for o4,o2,c in zip(opk(tr,4),opk(tr,2),cnt): sup4[o4]+=c; sup2[o2]+=c
@@ -221,13 +241,15 @@ def main():
         s=np.zeros(len(df))
         for i,(o4,o2) in enumerate(zip(opk(df,4),opk(df,2))): s[i]=sup4.get(o4,0) if sup4.get(o4,0)>0 else sup2.get(o2,0)
         return s
-    def acalib(p,sup):
-        lam=lo+(hi-lo)*np.exp(-sup/tau); q=np.exp(np.log(np.clip(p,1e-9,1))/T); q/=q.sum(1,keepdims=True)
-        q=(1-lam[:,None])*q+lam[:,None]*prior[None]; return q/q.sum(1,keepdims=True)
+    def disagree(pa,pb,pc): return (np.abs(pa-pb).sum(1)+np.abs(pa-pc).sum(1)+np.abs(pb-pc).sum(1))/3.0
+    def acalib(p,feat,sup,dis):
+        rar=np.exp(-sup/tau); dn=np.clip(dis/dsc,0,1); lam=lo+(hi-lo)*np.maximum(rar,dn)
+        wsup=(sup/(sup+tau2))[:,None]; target=wsup*feat+(1-wsup)*prior[None]
+        q=np.exp(np.log(np.clip(p,1e-9,1))/T); q/=q.sum(1,keepdims=True); q=(1-lam[:,None])*q+lam[:,None]*target; return q/q.sum(1,keepdims=True)
     bl_oof=wp*pos_oof+wg*gru_oof+wf*feat_oof; bl_oof/=bl_oof.sum(1,keepdims=True)
-    c_oof=acalib(bl_oof,support(tr)); mp=c_oof.max(1); a,b=np.linalg.lstsq(np.vstack([mp,np.ones_like(mp)]).T,Y.max(1),rcond=None)[0]
+    c_oof=acalib(bl_oof,feat_oof,support(tr),disagree(pos_oof,gru_oof,feat_oof)); mp=c_oof.max(1); a,b=np.linalg.lstsq(np.vstack([mp,np.ones_like(mp)]).T,Y.max(1),rcond=None)[0]
     bl=wp*pos_te+wg*gru_te+wf*feat_te; bl/=bl.sum(1,keepdims=True)
-    fin=acalib(bl,support(te)); conf=np.clip(a*fin.max(1)+b,0,1)
+    fin=acalib(bl,feat_te,support(te),disagree(pos_te,gru_te,feat_te)); conf=np.clip(a*fin.max(1)+b,0,1)
     sub=pd.DataFrame({'id':te['id'].values,'white_win_prob':fin[:,0],'draw_prob':fin[:,1],'black_win_prob':fin[:,2],'confidence':conf})
     os.makedirs('./working',exist_ok=True); sub.to_csv('./working/submission.csv',index=False)
     print('wrote ./working/submission.csv',sub.shape,flush=True)

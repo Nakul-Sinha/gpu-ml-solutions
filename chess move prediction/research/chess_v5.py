@@ -59,10 +59,10 @@ def feat_models(tri, te_tr, X_tr):
     return sc,lr,gb
 class PNet(nn.Module):
     def __init__(s):
-        super().__init__(); s.c=nn.Sequential(nn.Conv2d(12,48,3,padding=1),nn.ReLU(),nn.BatchNorm2d(48),nn.Conv2d(48,48,3,padding=1),nn.ReLU(),nn.BatchNorm2d(48),nn.AdaptiveAvgPool2d(1))
-        s.f=nn.Sequential(nn.Flatten(),nn.Dropout(0.5),nn.Linear(49,32),nn.ReLU(),nn.Dropout(0.4),nn.Linear(32,3))
+        super().__init__(); s.c=nn.Sequential(nn.Conv2d(15,64,3,padding=1),nn.ReLU(),nn.BatchNorm2d(64),nn.Conv2d(64,64,3,padding=1),nn.ReLU(),nn.BatchNorm2d(64),nn.AdaptiveAvgPool2d(1))
+        s.f=nn.Sequential(nn.Flatten(),nn.Dropout(0.55),nn.Linear(65,40),nn.ReLU(),nn.Dropout(0.45),nn.Linear(40,3))
     def forward(s,x,p): return s.f(torch.cat([s.c(x).flatten(1),p],1))
-def pos_train_pred(tri, PLp, PLYp, seeds=3, epochs=60):
+def pos_train_pred(tri, PLp, PLYp, seeds=5, epochs=60):
     Xt=torch.tensor(PLtr[tri]).to(DEV); yt=torch.tensor(Y[tri]).to(DEV); wt=torch.tensor(np.sqrt(cnt[tri])).to(DEV); pt=torch.tensor(((PLYtr[tri]-11)/3)[:,None]).to(DEV)
     Xp=torch.tensor(PLp).to(DEV); pp=torch.tensor(((PLYp-11)/3)[:,None]).to(DEV); outs=[]
     for sd in range(seeds):
